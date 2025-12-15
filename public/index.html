@@ -1,0 +1,1889 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WorldSimplify — анализ договоров</title>
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com"
+    />
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui,
+          sans-serif;
+        background: #f5f5f8;
+        color: #111827;
+        font-size: 15px;
+      }
+
+      /* ---------- TOP NAV ---------- */
+
+      .topbar {
+        height: 56px;
+        padding: 0 32px;
+        background: #ffffff;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .top-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .logo-mark {
+        width: 26px;
+        height: 26px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, #2563eb, #4f46e5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #f9fafb;
+        font-weight: 700;
+        font-size: 14px;
+        box-shadow: 0 4px 10px rgba(37, 99, 235, 0.4);
+      }
+
+      .logo-text {
+        font-size: 16px;
+        font-weight: 600;
+        color: #111827;
+      }
+
+      .logo-sub {
+        font-size: 12px;
+        color: #6b7280;
+      }
+
+      .top-right {
+        font-size: 12px;
+        color: #6b7280;
+      }
+
+      /* ---------- MAIN SHELL ---------- */
+
+      .page {
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 20px 24px 40px;
+      }
+
+      .title-row {
+        margin-bottom: 14px;
+      }
+
+      .title {
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+
+      .subtitle {
+        font-size: 13px;
+        color: #6b7280;
+      }
+
+      /* ---------- WORKSPACE (2 колонки) ---------- */
+
+      .workspace {
+        background: #ffffff;
+        border-radius: 20px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+        padding: 18px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.15fr);
+        column-gap: 18px;
+        row-gap: 12px;
+      }
+
+      @media (max-width: 900px) {
+        .workspace {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .column {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .small-label {
+        font-size: 13px;
+        color: #6b7280;
+      }
+
+      /* ---------- LEFT COLUMN: ввод ---------- */
+
+      textarea {
+        width: 100%;
+        min-height: 220px;
+        background: #f9fafb;
+        color: #111827;
+        border-radius: 14px;
+        border: 1px solid #e5e7eb;
+        padding: 12px;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 14px;
+        line-height: 1.45;
+        outline: none;
+      }
+
+      textarea:focus {
+        border-color: #60a5fa;
+        box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.45);
+      }
+
+      .controls-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+      }
+
+      button {
+        cursor: pointer;
+        border-radius: 10px;
+        border: 1px solid #d1d5db;
+        background: #ffffff;
+        color: #111827;
+        font-size: 14px;
+        padding: 8px 20px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.15s, border-color 0.15s, box-shadow 0.15s,
+          transform 0.1s, opacity 0.1s;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+      }
+
+      button:hover:not([disabled]) {
+        background: #f9fafb;
+        border-color: #93c5fd;
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+        transform: translateY(-1px);
+      }
+
+      button[disabled] {
+        opacity: 0.55;
+        cursor: default;
+        box-shadow: none;
+      }
+
+      .btn-primary {
+        background: #60a5fa;
+        border-color: #60a5fa;
+        color: #f9fafb;
+      }
+
+      .btn-primary:hover:not([disabled]) {
+        background: #4f8ff4;
+        border-color: #4f8ff4;
+        box-shadow: 0 6px 14px rgba(79, 143, 244, 0.45);
+      }
+
+      .btn-ghost {
+        background: #ffffff;
+        color: #1f2937;
+      }
+
+      .btn-mini {
+        margin-top: 4px;
+        padding: 4px 10px;
+        font-size: 11px;
+        border-radius: 999px;
+        box-shadow: none;
+      }
+      
+      /* Стили для активной кнопки фильтрации */
+      .filter-btn.active {
+          background: #e0edff;
+          border-color: #60a5fa;
+          font-weight: 600;
+          color: #1d4ed8;
+      }
+
+      /* ---------- spinner / статус ---------- */
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 20px;
+      }
+
+      .spinner {
+        width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        border: 2px solid #dbeafe;
+        border-top-color: #3b82f6;
+        animation: spin 0.6s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ---------- RISK PILL слева ---------- */
+
+      .risk-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        min-width: 110px;
+        border: 1px solid transparent;
+      }
+
+      .risk-low {
+        background: #ecfdf5;
+        border-color: #bbf7d0;
+        color: #15803d;
+      }
+
+      .risk-medium {
+        background: #fffbeb;
+        border-color: #fed7aa;
+        color: #92400e;
+      }
+
+      .risk-high {
+        background: #fff1f2;
+        border-color: #fecaca;
+        color: #b91c1c;
+      }
+
+      .risk-critical {
+        background: #fdf4ff;
+        border-color: #e9d5ff;
+        color: #6b21a8;
+      }
+
+      /* ---------- Upload: dropzone ---------- */
+
+      .upload-card {
+        margin-top: 4px;
+        background: #f9fafb;
+        border-radius: 14px;
+        border: 1px dashed #d1d5db;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        transition: border-color 0.15s, background 0.15s;
+      }
+
+      .upload-card.dragover {
+        border-color: #60a5fa;
+        background: #e0edff;
+      }
+
+      .upload-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+
+      input[type="file"] {
+        font-size: 12px;
+      }
+
+      .preview-box {
+        background: #ffffff;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        padding: 8px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+        max-height: 120px;
+        overflow: auto;
+      }
+
+      /* ---------- Highlighted text (Остается для навигации) ---------- */
+
+      .highlight-box {
+        background: #ffffff;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        padding: 8px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 13px;
+        white-space: normal;
+        min-height: 180px; 
+        overflow: auto;
+        scroll-behavior: smooth;
+        position: relative;
+      }
+      
+      .hl-high {
+        background: #fee2e2;
+        border-radius: 3px;
+        padding: 0 2px;
+        scroll-margin-top: 10px;
+        transition: outline 0.1s ease-in-out;
+      }
+
+      /* ---------- RIGHT COLUMN: отчёт ---------- */
+
+      .result-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.2fr);
+        gap: 10px;
+      }
+
+      @media (max-width: 900px) {
+        .result-layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .result-card {
+        background: #f9fafb;
+        border-radius: 14px;
+        border: 1px solid #e5e7eb;
+        padding: 10px 12px 10px;
+        font-size: 13px;
+      }
+
+      .result-card.full {
+        grid-column: 1 / -1;
+      }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        padding-bottom: 4px;
+      }
+
+      .card-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #4b5563;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .card-toggle {
+        font-size: 11px;
+        color: #9ca3af;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .card-body {
+        margin-top: 6px;
+      }
+
+      .card-collapsed .card-body {
+        display: none;
+      }
+
+      /* ---------- Hero risk card с большим кругом ---------- */
+
+      .hero-risk {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .hero-circle-wrap {
+        width: 112px;
+        height: 112px;
+        position: relative;
+      }
+
+      .hero-circle-text {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 22px;
+      }
+
+      .hero-info-main {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+
+      .hero-info-sub {
+        font-size: 12px;
+        color: #6b7280;
+        line-height: 1.55;
+      }
+
+      .scale-text {
+        margin-top: 8px;
+        font-size: 11px;
+        color: #6b7280;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .scale-text span {
+        font-weight: 500;
+      }
+
+      .verdict {
+        margin-top: 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .verdict-low {
+        color: #15803d;
+      }
+
+      .verdict-medium {
+        color: #92400e;
+      }
+
+      .verdict-high {
+        color: #b91c1c;
+      }
+
+      /* ---------- risk distribution (НОВАЯ ВИЗУАЛИЗАЦИЯ) ---------- */
+
+      .risk-distribution {
+        margin-top: 8px;
+        font-size: 11px;
+        color: #4b5563;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .dist-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .dist-label {
+        width: 60px;
+        font-weight: 500;
+      }
+
+      .dist-bar-wrap {
+        flex: 1;
+        height: 6px;
+        background: #e5e7eb;
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .dist-bar {
+        height: 100%;
+        transition: width 0.3s ease-out;
+        border-radius: 999px;
+      }
+
+      .dist-count {
+        width: 20px;
+        text-align: right;
+        font-weight: 600;
+        color: #1f2937;
+      }
+
+      /* Цвета для полосок */
+      .dist-high .dist-bar {
+        background: #f87171;
+      }
+      .dist-medium .dist-bar {
+        background: #facc15;
+      }
+      .dist-low .dist-bar {
+        background: #4ade80;
+      }
+      
+      /* ---------- Top 3 Risks ---------- */
+
+      .top-risks-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .top-risk-card {
+        flex: 1 1 30%;
+        min-width: 180px;
+        background: #fff1f2;
+        border-radius: 12px;
+        border: 1px solid #fecaca;
+        padding: 8px 9px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .top-risk-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        color: #b91c1c;
+      }
+
+      .top-risk-title {
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .top-risk-caption {
+        font-size: 12px;
+        color: #7f1d1d;
+      }
+
+      /* ---------- Lists + Diff Mode Styles ---------- */
+
+      .risk-list,
+      .recs-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .risk-item {
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        padding: 6px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        position: relative; 
+        transition: opacity 0.3s;
+      }
+      
+      /* Скрытые элементы для фильтрации */
+      .risk-item.hidden {
+        display: none !important;
+      }
+
+      /* Визуальное улучшение: цветная полоса слева */
+      .risk-item.high {
+          border-left: 5px solid #f87171;
+          padding-left: 10px;
+          background: #fff1f2;
+          border-color: #fecaca;
+      }
+      .risk-item.medium {
+          border-left: 5px solid #facc15;
+          padding-left: 10px;
+          background: #fffbeb;
+          border-color: #fed7aa;
+      }
+      .risk-item.low {
+          border-left: 5px solid #4ade80;
+          padding-left: 10px;
+          background: #ecfdf5;
+          border-color: #bbf7d0;
+      }
+
+      .risk-header-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .risk-meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        justify-content: space-between;
+      }
+
+      .risk-badge,
+      .rec-badge {
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 2px 8px;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .badge-high {
+        background: #fee2e2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+      }
+
+      .badge-medium {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fed7aa;
+      }
+
+      .badge-low {
+        background: #dcfce7;
+        color: #15803d;
+        border: 1px solid #bbf7d0;
+      }
+
+      .rec-badge {
+        background: #dbeafe;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+      }
+
+      .risk-text,
+      .rec-text {
+        font-size: 13px;
+      }
+
+      .risk-tags {
+        font-size: 11px;
+        color: #6b7280;
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+        white-space: nowrap;
+      }
+
+      .risk-tags-icon {
+        font-size: 13px;
+      }
+
+      /* DIFF MODE STYLES */
+      .diff-container {
+          margin-top: 8px;
+          padding: 10px;
+          border: 1px dashed #d1d5db;
+          border-radius: 8px;
+          background: #ffffff;
+          font-size: 13px;
+          line-height: 1.5;
+          white-space: pre-wrap;
+          font-family: "Inter", sans-serif;
+          display: none; 
+      }
+      
+      .diff-deleted {
+          text-decoration: line-through;
+          background-color: #fcebeb; 
+          color: #b91c1c;
+          padding: 1px 3px;
+          border-radius: 3px;
+      }
+
+      .diff-added {
+          background-color: #ecfdf5;
+          color: #065f46;
+          padding: 1px 3px;
+          border-radius: 3px;
+      }
+      
+      .diff-controls {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+          margin-top: 8px;
+      }
+
+      /* Скрываем старые details */
+      .risk-details {
+        display: none; 
+      }
+      .risk-item.open .risk-details {
+        display: none; 
+      }
+      
+      /* ---------- Raw report (УДАЛЕНО) ---------- */
+
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="top-left">
+        <div class="logo-mark">W</div>
+        <div>
+          <div class="logo-text">WorldSimplify</div>
+          <div class="logo-sub">Анализ договоров с ИИ</div>
+        </div>
+      </div>
+      <div class="top-right">v9.1 · beta</div>
+    </header>
+
+    <main class="page">
+      <div class="title-row">
+        <div class="title">Тестирование программы на договорах</div>
+        <div class="subtitle">
+          Вставьте текст договора или загрузите файл — система найдёт риски и объяснит их
+          простым языком.
+        </div>
+      </div>
+
+      <section class="workspace">
+        <div class="column">
+          <div>
+            <div class="small-label">Вставьте текст договора</div>
+            <textarea
+              id="taInput"
+              placeholder="Вставьте сюда текст договора для анализа..."
+            ></textarea>
+          </div>
+
+          <div class="controls-row">
+            <button id="btnAnalyze" class="btn-primary">🔍 Анализ и объяснение</button>
+            <button id="exportBtn" class="btn-ghost">⬇️ Экспорт DOCX</button>
+          </div>
+
+          <div class="status-row">
+            <div id="statusSpinner" class="spinner" style="display: none"></div>
+            <div id="statusText" class="small-label"></div>
+          </div>
+
+          <div class="controls-row">
+            <span class="small-label">Индекс риска:</span>
+            <div id="riskPill" class="risk-pill risk-low">Low (0/100)</div>
+          </div>
+
+          <div
+            class="upload-card"
+            id="uploadCard"
+            title="Нажмите или перетащите файл сюда"
+          >
+            <div class="small-label">
+              Загрузка договора (PDF / DOCX / фото) — перетащите файл или выберите руками
+            </div>
+            <div class="upload-row">
+              <input type="file" id="fileInput" />
+              <button id="uploadBtn">⬆️ Отправить файл на сервер</button>
+              <button id="analyzeFileBtn" disabled>▶️ Анализировать этот файл</button>
+            </div>
+            <div class="small-label">Предпросмотр текста</div>
+            <pre id="previewBox" class="preview-box">—</pre>
+          </div>
+          
+          <div>
+            <div class="small-label">Просмотр текста договора</div>
+            <div id="highlightBox" class="highlight-box">
+              Здесь после анализа появится текст договора с подсветкой самых опасных
+              формулировок.
+            </div>
+          </div>
+        </div>
+
+        <div class="column">
+          <div class="small-label">Общий результат</div>
+          <div class="result-layout">
+            <div class="result-card" id="heroCard">
+              <div class="card-header">
+                <div class="card-title">Индекс риска</div>
+                <div class="card-toggle" data-target="heroBody">
+                  Свернуть ⌄
+                </div>
+              </div>
+              <div class="card-body" id="heroBody">
+                <div class="hero-risk">
+                  <div class="hero-circle-wrap">
+                    <svg
+                      id="heroSvg"
+                      viewBox="0 0 100 100"
+                      width="112"
+                      height="112"
+                    >
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="42"
+                        stroke="#e5e7eb"
+                        stroke-width="10"
+                        fill="none"
+                      ></circle>
+                      <circle
+                        id="heroCircle"
+                        cx="50"
+                        cy="50"
+                        r="42"
+                        stroke="#22c55e"
+                        stroke-width="10"
+                        fill="none"
+                        stroke-linecap="round"
+                        stroke-dasharray="264"
+                        stroke-dashoffset="264"
+                        transform="rotate(-90 50 50)"
+                      ></circle>
+                    </svg>
+                    <div class="hero-circle-text" id="scoreValue">0</div>
+                  </div>
+                  <div>
+                    <div class="hero-info-main" id="scoreLevelText">
+                      Низкий риск для клиента
+                    </div>
+                    <div class="hero-info-sub" id="scoreDesc">
+                      Запустите анализ, чтобы увидеть оценку токсичности договора.
+                    </div>
+                  </div>
+                </div>
+                <div class="scale-text">
+                  <span>⚠️</span>
+                  <span>0–30:</span> безопасно ·
+                  <span>31–70:</span> умеренный риск ·
+                  <span>71–100:</span> высокий риск
+                </div>
+                <div id="verdictText" class="verdict verdict-low">
+                  Пока нет оценки — выполните анализ, чтобы получить вердикт по договору.
+                </div>
+                <div class="risk-distribution">
+                  <div class="dist-row dist-high">
+                    <span class="dist-label">High:</span>
+                    <div class="dist-bar-wrap">
+                        <span id="distHighBar" class="dist-bar"></span>
+                    </div>
+                    <span id="distHighCount" class="dist-count">0</span>
+                  </div>
+                  <div class="dist-row dist-medium">
+                    <span class="dist-label">Medium:</span>
+                    <div class="dist-bar-wrap">
+                        <span id="distMedBar" class="dist-bar"></span>
+                    </div>
+                    <span id="distMedCount" class="dist-count">0</span>
+                  </div>
+                  <div class="dist-row dist-low">
+                    <span class="dist-label">Low:</span>
+                    <div class="dist-bar-wrap">
+                        <span id="distLowBar" class="dist-bar"></span>
+                    </div>
+                    <span id="distLowCount" class="dist-count">0</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="result-card" id="summaryCard">
+              <div class="card-header">
+                <div class="card-title">Summary</div>
+                <div class="card-toggle" data-target="summaryBody">
+                  Свернуть ⌄
+                </div>
+              </div>
+              <div class="card-body" id="summaryBody">
+                <div id="summaryText" class="small-label">
+                  Запустите анализ, чтобы увидеть краткий вывод по договору.
+                </div>
+              </div>
+            </div>
+
+            <div class="result-card full" id="topCard">
+              <div class="card-header">
+                <div class="card-title">Top-3 самых жёстких риска</div>
+                <div class="card-toggle" data-target="topBody">
+                  Свернуть ⌄
+                </div>
+              </div>
+              <div class="card-body" id="topBody">
+                <div id="topRisksRow" class="top-risks-row"></div>
+              </div>
+            </div>
+
+            <div class="result-card full" id="neuroCard">
+              <div class="card-header">
+                <div class="card-title">Нейросовет</div>
+                <div class="card-toggle" data-target="neuroBody">
+                  Свернуть ⌄
+                </div>
+              </div>
+              <div class="card-body" id="neuroBody">
+                <div id="neuroAdviceText" class="small-label">
+                  Здесь появится главный вывод ИИ о том, что представляет наибольшую угрозу
+                  для клиента.
+                </div>
+              </div>
+            </div>
+
+            <div class="result-card full" id="risksCard">
+              <div class="card-header">
+                <div class="card-title">Ключевые риски</div>
+                <div class="card-toggle" data-target="risksBody">
+                  Свернуть ⌄
+                </div>
+              </div>
+              <div class="card-body" id="risksBody">
+                <div class="filter-controls" style="margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                    <span class="small-label" style="margin-right: 4px;">Фильтр:</span>
+                    <button class="btn-mini filter-btn active" data-filter="all">Все (<span id="filterCountAll">0</span>)</button>
+                    <button class="btn-mini filter-btn" data-filter="high">Высокие (<span id="filterCountHigh">0</span>)</button>
+                    <button class="btn-mini filter-btn" data-filter="medium">Средние (<span id="filterCountMedium">0</span>)</button>
+                    <button class="btn-mini filter-btn" data-filter="low">Низкие (<span id="filterCountLow">0</span>)</button>
+                    <input type="text" id="searchRisksInput" placeholder="Поиск по рискам..." style="flex-grow: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid #d1d5db; font-size: 13px; max-width: 200px;">
+                </div>
+
+                <ul id="risksList" class="risk-list"></ul>
+              </div>
+            </div>
+
+            <div class="result-card full" id="recsCard">
+              <div class="card-header">
+                <div class="card-title">Рекомендации</div>
+                <div class="card-toggle" data-target="recsBody">
+                  Свернуть ⌄
+                </div>
+              </div>
+              <div class="card-body" id="recsBody">
+                <ul id="recsList" class="recs-list"></ul>
+              </div>
+            </div>
+
+            </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const taInput = document.getElementById("taInput");
+      const btnAnalyze = document.getElementById("btnAnalyze");
+      const exportBtn = document.getElementById("exportBtn");
+      const riskPill = document.getElementById("riskPill");
+
+      const fileInput = document.getElementById("fileInput");
+      const uploadBtn = document.getElementById("uploadBtn");
+      const analyzeFileBtn = document.getElementById("analyzeFileBtn");
+      const previewBox = document.getElementById("previewBox");
+      const highlightBox = document.getElementById("highlightBox");
+      const uploadCard = document.getElementById("uploadCard");
+
+      const statusSpinner = document.getElementById("statusSpinner");
+      const statusText = document.getElementById("statusText");
+
+      const heroCircle = document.getElementById("heroCircle");
+      const scoreValueEl = document.getElementById("scoreValue");
+      const scoreLevelTextEl = document.getElementById("scoreLevelText");
+      const scoreDescEl = document.getElementById("scoreDesc");
+      const verdictTextEl = document.getElementById("verdictText");
+
+      const distHighBarEl = document.getElementById("distHighBar");
+      const distMedBarEl = document.getElementById("distMedBar");
+      const distLowBarEl = document.getElementById("distLowBar");
+      const distHighCountEl = document.getElementById("distHighCount");
+      const distMedCountEl = document.getElementById("distMedCount");
+      const distLowCountEl = document.getElementById("distLowCount");
+      
+      // Элементы для фильтрации
+      const filterCountAllEl = document.getElementById("filterCountAll");
+      const filterCountHighEl = document.getElementById("filterCountHigh");
+      const filterCountMediumEl = document.getElementById("filterCountMedium");
+      const filterCountLowEl = document.getElementById("filterCountLow");
+      const searchRisksInput = document.getElementById("searchRisksInput"); 
+
+      const summaryTextEl = document.getElementById("summaryText");
+      const risksListEl = document.getElementById("risksList");
+      const recsListEl = document.getElementById("recsList");
+      const topRisksRowEl = document.getElementById("topRisksRow");
+      const neuroAdviceTextEl = document.getElementById("neuroAdviceText");
+
+      let currentDocId = null;
+      let lastContractText = "";
+      let lastReportText = "";
+      let riskCounter = 0; // Глобальный счетчик для уникальных ID (якорей)
+      let allRiskItems = []; // Хранилище для элементов списка рисков
+
+      const CIRCUMFERENCE = 2 * Math.PI * 42;
+
+      function setHeroCircle(score) {
+        const clamped = Math.min(Math.max(score, 0), 100);
+        const offset = CIRCUMFERENCE - (CIRCUMFERENCE * clamped) / 100;
+        heroCircle.setAttribute("stroke-dasharray", CIRCUMFERENCE.toString());
+        heroCircle.setAttribute("stroke-dashoffset", offset.toString());
+
+        let color = "#22c55e";
+        if (clamped > 70) color = "#f97373";
+        else if (clamped > 30) color = "#fbbf24";
+        heroCircle.setAttribute("stroke", color);
+      }
+
+      function parseScoreAndLevel(text) {
+        const scoreMatch = text.match(/RISK_SCORE:\s*(\d+)\s*\/\s*100/i);
+        const levelMatch = text.match(/RISK_LEVEL:\s*([A-Za-zА-Яа-я]+)/i);
+
+        let score = 0;
+        let level = "Low";
+
+        if (scoreMatch) {
+          score = parseInt(scoreMatch[1] || "0", 10);
+        }
+
+        if (levelMatch) {
+          level = levelMatch[1];
+        } else {
+          if (score <= 30) level = "Low";
+          else if (score <= 70) level = "Medium";
+          else level = "High";
+        }
+        return { score, level };
+      }
+
+      function levelText(level) {
+        const l = level.toLowerCase();
+        if (l.startsWith("high")) return "Высокий риск для клиента";
+        if (l.startsWith("medium")) return "Средний риск для клиента";
+        return "Низкий риск для клиента";
+      }
+
+      function levelDesc(level) {
+        const l = level.toLowerCase();
+        if (l.startsWith("high"))
+          return "Договор содержит серьёзные односторонние условия. Рекомендуется пересмотреть ключевые пункты.";
+        if (l.startsWith("medium"))
+          return "Есть существенные, но управляемые риски. Стоит внимательно пройтись по отмеченным пунктам.";
+        return "Существенных рисков почти нет, но при крупных суммах всё равно стоит дать договор на юрпроверку.";
+      }
+
+      function verdictByScore(score) {
+        if (score >= 71) {
+          return {
+            text: "Этот договор подписывать нельзя 🚫",
+            css: "verdict-high",
+          };
+        }
+        if (score >= 40) {
+          return {
+            text:
+              "Договор рискованный ⚠️ подписывать только после серьёзных правок и обсуждения с контрагентом.",
+            css: "verdict-medium",
+          };
+        }
+        return {
+          text:
+            "Договор в целом безопасен 👍 можно подписывать с осторожностью и вниманием к деталям.",
+          css: "verdict-low",
+        };
+      }
+
+      function updateVerdict(score) {
+        verdictTextEl.classList.remove(
+          "verdict-low",
+          "verdict-medium",
+          "verdict-high"
+        );
+        const v = verdictByScore(score);
+        verdictTextEl.textContent = v.text;
+        verdictTextEl.classList.add(v.css);
+      }
+
+      function updateRiskPill(score, level) {
+        riskPill.classList.remove(
+          "risk-low",
+          "risk-medium",
+          "risk-high",
+          "risk-critical"
+        );
+
+        let cssClass = "risk-low";
+        if (level.toLowerCase().startsWith("medium")) cssClass = "risk-medium";
+        else if (level.toLowerCase().startsWith("high")) cssClass = "risk-high";
+        else if (level.toLowerCase().startsWith("crit")) cssClass = "risk-critical";
+
+        riskPill.classList.add(cssClass);
+        riskPill.textContent = `${level} (${score}/100)`;
+      }
+
+      // ОБНОВЛЕННАЯ ФУНКЦИЯ: Визуализация распределения рисков полосками
+      function updateRiskDistribution(highCount, medCount, lowCount) {
+        const total = highCount + medCount + lowCount;
+        
+        const highPct = total > 0 ? (highCount / total) * 100 : 0;
+        const medPct = total > 0 ? (medCount / total) * 100 : 0;
+        const lowPct = total > 0 ? (lowCount / total) * 100 : 0;
+
+        distHighBarEl.style.width = highPct + "%";
+        distMedBarEl.style.width = medPct + "%";
+        distLowBarEl.style.width = lowPct + "%";
+
+        distHighCountEl.textContent = String(highCount);
+        distMedCountEl.textContent = String(medCount);
+        distLowCountEl.textContent = String(lowCount);
+        
+        // Обновляем счетчики для кнопок фильтрации
+        filterCountAllEl.textContent = String(total);
+        filterCountHighEl.textContent = String(highCount);
+        filterCountMediumEl.textContent = String(medCount);
+        filterCountLowEl.textContent = String(lowCount);
+      }
+
+      function parseReportSections(report) {
+        const lines = report.split(/\r?\n/);
+
+        let section = null;
+        let summary = [];
+        let risks = [];
+        let recs = [];
+
+        for (let rawLine of lines) {
+          const line = rawLine.trim();
+
+          if (/^SUMMARY:/i.test(line)) {
+            section = "summary";
+            continue;
+          }
+          if (/^RISKS:/i.test(line)) {
+            section = "risks";
+            continue;
+          }
+          if (/^RECOMMENDATIONS:/i.test(line)) {
+            section = "recs";
+            continue;
+          }
+
+          if (!line) continue;
+
+          if (section === "summary") {
+            summary.push(rawLine);
+          } else if (section === "risks") {
+            if (line.startsWith("-")) {
+              risks.push(line.replace(/^-+\s*/, ""));
+            }
+          } else if (section === "recs") {
+            if (line.startsWith("-")) {
+              recs.push(line.replace(/^-+\s*/, ""));
+            }
+          }
+        }
+
+        return {
+          summary: summary.join("\n").trim(),
+          risks,
+          recs,
+        };
+      }
+
+      function severityFromLine(line) {
+        const m = line.match(/\[(High|Medium|Low)\]/i);
+        if (!m) return "medium";
+        const s = m[1].toLowerCase();
+        if (s.startsWith("high")) return "high";
+        if (s.startsWith("low")) return "low";
+        return "medium";
+      }
+
+      function classifyRisk(cleanText) {
+        const tags = [];
+        if (
+          /штраф|неустойк|пени|оплат|сумм|комисси|платеж|возмещен/i.test(
+            cleanText
+          )
+        )
+          tags.push("финансовый");
+        if (
+          /расторжен|ответственн|суд|оспариван|юрисдикц|претензи/i.test(
+            cleanText
+          )
+        )
+          tags.push("юридический");
+        if (/доступ|персональн|данн|конфиденциал|kyc|санкц/i.test(cleanText))
+          tags.push("данные/KYC");
+        if (/срок|дедлайн|сроки|уведомлени/i.test(cleanText))
+          tags.push("сроки и уведомления");
+        if (!tags.length) tags.push("прочее");
+        return tags;
+      }
+
+      function riskTagIcon(tags) {
+        if (tags.includes("финансовый")) return "💰";
+        if (tags.includes("юридический")) return "⚖️";
+        if (tags.includes("данные/KYC")) return "🔒";
+        if (tags.includes("сроки и уведомления")) return "⏰";
+        return "🔎";
+      }
+
+      function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      // Генерирует якоря для навигации
+      function buildHighlightedHtml(contractText, topHighRisks) {
+        if (!contractText.trim()) {
+            return "Здесь после анализа появится текст договора с подсветкой самых опасных формулировок.";
+        }
+
+        let html = contractText;
+        riskCounter = 0; // Сбрасываем счетчик при каждом новом анализе
+
+        if (topHighRisks && topHighRisks.length > 0) {
+            topHighRisks.forEach((risk) => {
+                let baseText = risk.cleanText || "";
+                if (!baseText) return;
+                baseText = baseText.replace(/\[(High|Medium|Low)\]/gi, "").trim();
+                if (baseText.length > 80) baseText = baseText.slice(0, 80);
+                if (baseText.length < 10) return;
+
+                const pattern = escapeRegExp(baseText.slice(0, 40));
+                const re = new RegExp(pattern, "gi");
+                
+                // Генерируем якорь с уникальным ID для каждого совпадения
+                html = html.replace(re, (m) => {
+                    const currentId = `risk-${riskCounter++}`;
+                    return `<span id="${currentId}" class="hl-high">${m}</span>`; 
+                });
+            });
+        }
+
+        html = html.replace(/\r\n/g, "\n").replace(/\n/g, "<br>");
+        return html;
+      }
+
+      // ЛОГИКА ФИЛЬТРАЦИИ И ПОИСКА
+      function applyFilters() {
+          const activeFilter = document.querySelector('.filter-btn.active').getAttribute('data-filter');
+          const searchTerm = searchRisksInput.value.toLowerCase().trim();
+          
+          allRiskItems.forEach(li => {
+              const severity = li.getAttribute('data-severity');
+              const text = li.textContent.toLowerCase();
+              
+              let matchesFilter = (activeFilter === 'all' || severity === activeFilter);
+              let matchesSearch = (searchTerm === '' || text.includes(searchTerm));
+              
+              if (matchesFilter && matchesSearch) {
+                  li.classList.remove('hidden');
+              } else {
+                  li.classList.add('hidden');
+              }
+          });
+      }
+
+      // ИСПРАВЛЕННАЯ ФУНКЦИЯ: renderStructuredReport
+      function renderStructuredReport(report) {
+        lastReportText = report;
+        allRiskItems = []; 
+
+        // Сброс счетчиков перед рендерингом
+        filterCountAllEl.textContent = '0';
+        filterCountHighEl.textContent = '0';
+        filterCountMediumEl.textContent = '0';
+        filterCountLowEl.textContent = '0';
+
+        if (!report.trim()) {
+            summaryTextEl.textContent =
+                "Сервер вернул пустой ответ. Попробуйте ещё раз или проверьте настройки.";
+            risksListEl.innerHTML = "";
+            recsListEl.innerHTML = "";
+            topRisksRowEl.innerHTML = "";
+            neuroAdviceTextEl.textContent =
+                "Не удалось получить анализ. Повторите запрос.";
+            scoreValueEl.textContent = "0";
+            setHeroCircle(0);
+            scoreLevelTextEl.textContent = levelText("Low");
+            scoreDescEl.textContent =
+                "Запустите анализ, чтобы увидеть оценку токсичности договора.";
+            updateRiskPill(0, "Low");
+            updateRiskDistribution(0, 0, 0); 
+            verdictTextEl.textContent =
+                "Пока нет оценки — выполните анализ, чтобы получить вердикт по договору.";
+            verdictTextEl.classList.remove(
+                "verdict-low",
+                "verdict-medium",
+                "verdict-high"
+            );
+            verdictTextEl.classList.add("verdict-low");
+            highlightBox.innerHTML =
+                "Здесь после анализа появится текст договора с подсветкой самых опасных формулировок.";
+            return;
+        }
+
+        const { score, level } = parseScoreAndLevel(report);
+        scoreValueEl.textContent = String(score);
+        setHeroCircle(score);
+        scoreLevelTextEl.textContent = levelText(level);
+        scoreDescEl.textContent = levelDesc(level);
+        updateRiskPill(score, level);
+        updateVerdict(score);
+
+        const { summary, risks, recs } = parseReportSections(report);
+
+        summaryTextEl.textContent =
+            summary || "ИИ не вернул краткого резюме по этому договору.";
+
+        // --- Подготовка рисков ---
+        risksListEl.innerHTML = "";
+        topRisksRowEl.innerHTML = "";
+
+        const riskObjects = risks.map((riskLine) => {
+            const sev = severityFromLine(riskLine);
+            const cleanText = riskLine.replace(/\s*\[(High|Medium|Low)\]\s*/i, "");
+            const tags = classifyRisk(cleanText);
+            return { line: riskLine, severity: sev, cleanText, tags };
+        });
+
+        const highCount = riskObjects.filter((r) => r.severity === "high").length;
+        const medCount = riskObjects.filter((r) => r.severity === "medium").length;
+        const lowCount = riskObjects.filter((r) => r.severity === "low").length;
+        updateRiskDistribution(highCount, medCount, lowCount);
+
+        const topHighRisks = riskObjects.filter((r) => r.severity === "high").slice(0, 3);
+        
+        // ВНИМАНИЕ: Сначала генерируем подсветку, чтобы `riskCounter` обновился
+        highlightBox.innerHTML = buildHighlightedHtml(lastContractText, topHighRisks);
+        let currentRiskIndex = 0; // Используется для привязки к якорям
+
+        if (topHighRisks.length === 0) {
+            topRisksRowEl.innerHTML =
+                '<div class="small-label">Высоких рисков не выделено.</div>';
+        } else {
+            topRisksRowEl.innerHTML = '';
+            topHighRisks.forEach((risk) => {
+                const card = document.createElement("div");
+                card.className = "top-risk-card";
+
+                const header = document.createElement("div");
+                header.className = "top-risk-header";
+                const left = document.createElement("div");
+                left.textContent = "⚠️ High-risk";
+                const hint = document.createElement("div");
+                hint.className = "small-label";
+                hint.textContent = "Ключевой риск по мнению ИИ";
+                header.appendChild(left);
+                header.appendChild(hint);
+
+                const title = document.createElement("div");
+                title.className = "top-risk-title";
+                title.textContent = risk.cleanText;
+
+                const body = document.createElement("div");
+                body.className = "top-risk-caption";
+                body.textContent =
+                    "Это один из пунктов, который может принести наибольший ущерб Клиенту при конфликте или споре.";
+
+                card.appendChild(header);
+                card.appendChild(title);
+                card.appendChild(body);
+                topRisksRowEl.appendChild(card);
+            });
+        }
+
+        // Нейросовет
+        if (riskObjects.length === 0) {
+            neuroAdviceTextEl.textContent =
+                "ИИ не выделил явных рисков. При крупных суммах всё равно стоит показать договор юристу.";
+        } else {
+            const mainRisk = topHighRisks[0] || riskObjects[0];
+            neuroAdviceTextEl.textContent =
+                'ИИ считает, что главная угроза для клиента: «' +
+                mainRisk.cleanText +
+                "». Обсудите изменение или удаление этого пункта с контрагентом.";
+        }
+
+        // Список всех рисков
+        if (riskObjects.length === 0) {
+            const li = document.createElement("li");
+            li.className = "risk-item low";
+            li.innerHTML =
+                '<span class="risk-text">Явные риски не были выделены в отчёте.</span>';
+            risksListEl.appendChild(li);
+        } else {
+            riskObjects.forEach((risk) => {
+                const li = document.createElement("li");
+                li.className = "risk-item " + risk.severity; 
+                li.setAttribute('data-severity', risk.severity); 
+                allRiskItems.push(li);
+
+                const headerRow = document.createElement("div");
+                headerRow.className = "risk-header-row";
+
+                const badge = document.createElement("span");
+                const sev = risk.severity;
+                let icon = "🟡";
+                let badgeClass = "badge-medium";
+                if (sev === "high") {
+                    icon = "⚠️";
+                    badgeClass = "badge-high";
+                } else if (sev === "low") {
+                    icon = "✅";
+                    badgeClass = "badge-low";
+                }
+                badge.className = "risk-badge " + badgeClass;
+                const iconSpan = document.createElement("span");
+                iconSpan.textContent = icon;
+                const textSpanLev = document.createElement("span");
+                textSpanLev.textContent =
+                    sev === "high" ? "High" : sev === "medium" ? "Medium" : "Low";
+                badge.appendChild(iconSpan);
+                badge.appendChild(textSpanLev);
+
+                const textSpan = document.createElement("span");
+                textSpan.className = "risk-text";
+                textSpan.textContent = risk.cleanText;
+
+                headerRow.appendChild(badge);
+                headerRow.appendChild(textSpan);
+
+                const metaRow = document.createElement("div");
+                metaRow.className = "risk-meta-row";
+
+                const tagsSpan = document.createElement("span");
+                tagsSpan.className = "risk-tags";
+                const iconTag = document.createElement("span");
+                iconTag.className = "risk-tags-icon";
+                iconTag.textContent = riskTagIcon(risk.tags);
+                const textTag = document.createElement("span");
+                textTag.textContent = risk.tags.join(" · ");
+                tagsSpan.appendChild(iconTag);
+                tagsSpan.appendChild(textTag);
+
+                const rewriteBtn = document.createElement("button");
+                rewriteBtn.className = "btn-mini";
+                rewriteBtn.innerHTML = "📝 Предложить правку";
+
+                metaRow.appendChild(tagsSpan);
+                
+                // --- КНОПКА НАВИГАЦИИ К ЯКОРЮ ---
+                const anchorCheck = topHighRisks.some(t => t.cleanText === risk.cleanText);
+                const anchorId = anchorCheck && (riskCounter > 0) ? `risk-${currentRiskIndex++}` : null;
+                
+                if (anchorId) {
+                    const navLink = document.createElement('button');
+                    navLink.className = 'btn-mini btn-ghost';
+                    navLink.textContent = '↑ Показать в тексте';
+                    
+                    navLink.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const targetElement = document.getElementById(anchorId);
+                        const highlightBox = document.getElementById('highlightBox');
+                        
+                        if (targetElement && highlightBox) {
+                            highlightBox.scrollTop = targetElement.offsetTop - highlightBox.offsetTop - 10; 
+                            
+                            targetElement.style.outline = '2px solid #60a5fa';
+                            setTimeout(() => {
+                                targetElement.style.outline = 'none';
+                            }, 1500);
+                        }
+                    });
+                    metaRow.appendChild(navLink);
+                }
+                // --- КОНЕЦ КНОПКИ НАВИГАЦИИ ---
+
+                metaRow.appendChild(rewriteBtn);
+
+                // КОНТЕЙНЕР ДЛЯ DIFF MODE
+                const diffContainer = document.createElement("div");
+                diffContainer.className = "diff-container";
+
+                li.appendChild(headerRow);
+                li.appendChild(metaRow);
+                li.appendChild(diffContainer); 
+                
+                // 3. Логика Diff Mode
+                rewriteBtn.addEventListener("click", async () => {
+                    const isAlreadyOpen = li.classList.contains("open-diff");
+                    
+                    if (isAlreadyOpen) {
+                        li.classList.remove("open-diff");
+                        diffContainer.style.display = "none";
+                        rewriteBtn.innerHTML = "📝 Предложить правку";
+                        return;
+                    }
+
+                    li.classList.add("open-diff");
+                    diffContainer.style.display = "block";
+                    
+                    if (diffContainer.getAttribute('data-safe-clause')) {
+                        rewriteBtn.innerHTML = "❌ Скрыть правку";
+                        return;
+                    }
+                    
+                    rewriteBtn.disabled = true;
+                    diffContainer.textContent = "⚙️ ИИ генерирует безопасную формулировку...";
+                    
+                    try {
+                        const res = await fetch("/rewrite_clause", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ clause: risk.cleanText }),
+                        });
+
+                        if (!res.ok) throw new Error("Ошибка сервера при перефразировании");
+
+                        const data = await res.json();
+                        const safeClause = (data.safe_clause || "").trim();
+                        
+                        if (safeClause) {
+                            const diffHtml = generateDiffHtml(risk.cleanText, safeClause);
+
+                            diffContainer.innerHTML = `
+                                <strong>Оригинал:</strong>
+                                <div style="margin-bottom: 10px; padding: 4px; border-bottom: 1px dashed #eee;">
+                                    <span class="diff-deleted">${risk.cleanText}</span>
+                                </div>
+                                <strong>Предложение ИИ:</strong>
+                                <div style="margin-bottom: 10px; padding: 4px; border-bottom: 1px dashed #eee;">
+                                    ${diffHtml}
+                                </div>
+                                <div class="diff-controls">
+                                    <button class="btn-mini btn-primary" onclick="copyTextToClipboard('${safeClause.replace(/'/g, "\\'")}')">
+                                        📋 Копировать текст правки
+                                    </button>
+                                </div>
+                            `;
+                            diffContainer.setAttribute('data-safe-clause', safeClause);
+
+                        } else {
+                            diffContainer.textContent = "🚫 ИИ не смог предложить конкретную замену. Проверьте логи.";
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        diffContainer.textContent = "🔥 Ошибка: Не удалось получить безопасный вариант.";
+                    } finally {
+                        rewriteBtn.innerHTML = "❌ Скрыть правку";
+                        rewriteBtn.disabled = false;
+                    }
+                });
+                
+                risksListEl.appendChild(li);
+            });
+        }
+        
+        // --- рекомендации ---
+        recsListEl.innerHTML = "";
+        if (!recs || recs.length === 0) {
+            const li = document.createElement("li");
+            li.className = "rec-item";
+            li.innerHTML =
+                '<span class="rec-text">ИИ не дал явных рекомендаций по изменению договора.</span>';
+            recsListEl.appendChild(li);
+        } else {
+            recs.forEach((recLine) => {
+                const li = document.createElement("li");
+                li.className = "rec-item";
+
+                const badge = document.createElement("span");
+                badge.className = "rec-badge";
+                badge.innerHTML = "💡<span>Совет</span>";
+                
+                // Очистка от повторяющейся шаблонной фразы
+                const REC_CLEAN_PATTERN = /(Совет\s*|Как\s*использовать:\s*|Обсудите эту правку с контрагентом и предложите более безопасную формулировку в договоре\.\s*Это снижает риск спорных трактовок и злоупотреблений\.\s*)/gi;
+                const cleanRec = recLine.replace(REC_CLEAN_PATTERN, '').trim();
+
+                const textSpan = document.createElement("span");
+                textSpan.className = "rec-text";
+                textSpan.textContent = cleanRec;
+
+                const details = document.createElement("div");
+                details.className = "rec-details";
+                details.innerHTML =
+                    "<strong>Как использовать:</strong> Обсудите эту правку с контрагентом и предложите более безопасную формулировку в договоре. Это снижает риск спорных трактовок и злоупотреблений.";
+
+                li.appendChild(badge);
+                li.appendChild(textSpan);
+                li.appendChild(details);
+
+                li.addEventListener("click", () => {
+                    li.classList.toggle("open");
+                });
+
+                recsListEl.appendChild(li);
+            });
+        }
+        
+        // Применяем фильтры после рендеринга всех элементов
+        applyFilters(); 
+      }
+
+      function setLoading(isLoading, msg) {
+        if (isLoading) {
+          statusSpinner.style.display = "block";
+          statusText.textContent = msg || "Анализируем договор...";
+          btnAnalyze.disabled = true;
+          analyzeFileBtn.disabled = true;
+        } else {
+          statusSpinner.style.display = "none";
+          statusText.textContent = msg || "";
+          btnAnalyze.disabled = false;
+        }
+      }
+
+      async function callAnalyze(payload) {
+        setLoading(true, "Читаю договор, ищу риски и формирую рекомендации...");
+        summaryTextEl.textContent = "Идёт анализ договора...";
+        risksListEl.innerHTML = "";
+        recsListEl.innerHTML = "";
+        topRisksRowEl.innerHTML = "";
+        neuroAdviceTextEl.textContent =
+          "Идёт анализ. Определяем главный риск для клиента...";
+        highlightBox.innerHTML =
+          "Строим подсветку рисков по тексту договора...";
+
+        try {
+          const res = await fetch("/analyze_one", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || "Ошибка анализа текста");
+          }
+
+          const report = await res.text();
+          renderStructuredReport(report);
+          setLoading(false, "Анализ завершён");
+        } catch (e) {
+          console.error(e);
+          summaryTextEl.textContent = "Произошла ошибка при анализе договора.";
+          neuroAdviceTextEl.textContent =
+            "Не удалось получить анализ. Повторите запрос.";
+          highlightBox.innerHTML =
+            "Не удалось построить подсветку. Попробуйте ещё раз.";
+          setLoading(false, "Не удалось выполнить анализ");
+        }
+      }
+
+      // Анализ текста
+      btnAnalyze.addEventListener("click", () => {
+        const text = taInput.value.trim();
+        if (!text) {
+          alert("Вставьте текст договора для анализа");
+          return;
+        }
+        lastContractText = text;
+        callAnalyze({
+          text: text,
+          chunk_chars: 6000,
+          max_chunks: 3,
+          format: "readable",
+        });
+      });
+
+      // Экспорт DOCX
+      exportBtn.addEventListener("click", async () => {
+        const report = lastReportText.trim();
+        if (!report) {
+          alert("Сначала выполните анализ, чтобы было что экспортировать.");
+          return;
+        }
+        try {
+          const res = await fetch("/make_docx", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ report }),
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || "Ошибка экспорта DOCX");
+          }
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "WorldSimplify_Report.docx";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          console.error(e);
+          alert("Не удалось экспортировать DOCX: " + (e.message || e));
+        }
+      });
+
+      // Загрузка файла
+      uploadBtn.addEventListener("click", async () => {
+        const file = fileInput.files[0];
+        if (!file) {
+          alert("Сначала выберите файл");
+          return;
+        }
+        await uploadFile(file);
+      });
+
+      async function uploadFile(file) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        previewBox.textContent = "Загружаем файл...";
+        analyzeFileBtn.disabled = true;
+        currentDocId = null;
+
+        try {
+          const res = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || "Ошибка загрузки файла");
+          }
+
+          const data = await res.json();
+          currentDocId = data.doc_id;
+          const preview = data.preview_text || "";
+          previewBox.textContent = preview || "Превью недоступно";
+          lastContractText = data.plain_text || preview || lastContractText;
+          analyzeFileBtn.disabled = false;
+          statusText.textContent = "Файл загружен, можно запустить анализ.";
+        } catch (e) {
+          console.error(e);
+          previewBox.textContent =
+            "Не удалось загрузить файл: " + (e.message || e);
+        }
+      }
+
+      // Drag & drop для uploadCard
+      uploadCard.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        uploadCard.classList.add("dragover");
+      });
+      uploadCard.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        uploadCard.classList.remove("dragover");
+      });
+      uploadCard.addEventListener("drop", (e) => {
+        e.preventDefault();
+        uploadCard.classList.remove("dragover");
+        const file = e.dataTransfer.files[0];
+        if (file) {
+          fileInput.files = e.dataTransfer.files;
+          uploadFile(file);
+        }
+      });
+
+      // Анализ файла
+      analyzeFileBtn.addEventListener("click", async () => {
+        if (!currentDocId) {
+          alert("Сначала загрузите файл");
+          return;
+        }
+
+        setLoading(true, "Анализируем загруженный файл...");
+        summaryTextEl.textContent = "Идёт анализ договора...";
+        topRisksRowEl.innerHTML = "";
+        neuroAdviceTextEl.textContent =
+          "Идёт анализ. Определяем главный риск для клиента...";
+        highlightBox.innerHTML =
+          "Строим подсветку рисков по тексту договора...";
+
+        try {
+          const res = await fetch("/analyze_by_doc_id", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              doc_id: currentDocId,
+              chunk_chars: 6000,
+              max_chunks: 3,
+              format: "readable",
+            }),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || "Ошибка анализа файла");
+          }
+
+          const report = await res.text();
+          try {
+            const parsedRes = await fetch(`/parsed/${currentDocId}`);
+            if (parsedRes.ok) {
+              const parsedJson = await parsedRes.json();
+              lastContractText = parsedJson.plain_text || lastContractText;
+            }
+          } catch (e) {
+            console.warn("parsed fetch error", e);
+          }
+          renderStructuredReport(report);
+          setLoading(false, "Анализ завершён");
+        } catch (e) {
+          console.error(e);
+          summaryTextEl.textContent = "Произошла ошибка при анализе файла.";
+          neuroAdviceTextEl.textContent =
+            "Не удалось получить анализ. Повторите запрос.";
+          highlightBox.innerHTML =
+            "Не удалось построить подсветку. Попробуйте ещё раз.";
+          setLoading(false, "Не удалось выполнить анализ");
+        }
+      });
+
+      // Общий обработчик для сворачиваемых карточек (Summary / Top / Risks / Recs / Hero / Neuro)
+      document.querySelectorAll(".card-toggle").forEach((toggle) => {
+        toggle.addEventListener("click", () => {
+          const targetId = toggle.getAttribute("data-target");
+          if (!targetId) return;
+          const body = document.getElementById(targetId);
+          if (!body) return;
+          const card = toggle.closest(".result-card");
+          const isCollapsed = card.classList.toggle("card-collapsed");
+          toggle.textContent = (isCollapsed ? "Развернуть" : "Свернуть") + " ⌄";
+        });
+      });
+      
+      // ОБРАБОТЧИКИ ФИЛЬТРАЦИИ И ПОИСКА
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+              document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+              e.currentTarget.classList.add('active');
+              applyFilters();
+          });
+      });
+
+      searchRisksInput.addEventListener('input', applyFilters);
+      
+      // --- Вспомогательные функции для Diff Mode и UI ---
+      
+      // Простая эмуляция Diff 
+      function generateDiffHtml(original, safe) {
+          if (original === safe) {
+              return safe + ' <span class="diff-added">(без изменений, просто безопасная формулировка)</span>';
+          }
+          return `<span class="diff-added">${safe}</span>`;
+      }
+
+      // Функция для копирования текста в буфер
+      function copyTextToClipboard(text) {
+          const plainText = text.replace(/<[^>]*>?/gm, ''); 
+          navigator.clipboard.writeText(plainText).then(() => {
+              alert("Текст правки скопирован в буфер обмена!");
+          }).catch(err => {
+              console.error('Не удалось скопировать текст: ', err);
+              alert("Не удалось скопировать текст. Пожалуйста, скопируйте его вручную.");
+          });
+      }
+      
+    </script>
+  </body>
+</html>
