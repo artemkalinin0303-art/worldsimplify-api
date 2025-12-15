@@ -255,7 +255,7 @@ async def upload(file: UploadFile = File(...)):
     con.close()
     
     # 2. ПРОВЕРКА КАЧЕСТВА (PRE-FLIGHT CHECK)
-    is_valid = len(text.strip()) > 50
+    is_valid = len(text.strip()) > 1
     
     return {
         "doc_id": doc_id, 
