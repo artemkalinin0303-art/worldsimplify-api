@@ -7,7 +7,7 @@ import mimetypes
 import logging
 from typing import List, Optional
 
-# 👇 ЭТА БИБЛИОТЕКА НУЖНА ДЛЯ POSTGRES
+# 👇 БИБЛИОТЕКА ДЛЯ POSTGRES
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -20,11 +20,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-# Библиотеки для чтения файлов
+# Чтение файлов
 import pypdf
 import docx
 
-# Библиотека Google Gemini
+# Google Gemini
 from google.genai import Client
 
 load_dotenv()
@@ -39,11 +39,11 @@ UPLOAD_DIR = "uploads"
 DB_PATH = "worldsimplify.db"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Настройка логов
+# Логи
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- 🔌 УПРАВЛЕНИЕ БАЗОЙ ДАННЫХ ---
+# --- 🔌 БАЗА ДАННЫХ ---
 def get_db_connection():
     if DATABASE_URL and psycopg2:
         try:
@@ -58,8 +58,7 @@ def get_db_connection():
 def db_init():
     conn, db_type = get_db_connection()
     cur = conn.cursor()
-    
-    # 1. Создаем таблицу (если нет)
+    # Создаем таблицу
     cur.execute("""
     CREATE TABLE IF NOT EXISTS docs(
         doc_id TEXT PRIMARY KEY,
@@ -69,22 +68,19 @@ def db_init():
         created_at BIGINT
     )""")
     
-    # 2. ⚡️ МИГРАЦИЯ: Если таблица была старая (без user_id), добавляем колонку
+    # Миграция: добавляем user_id если его нет
     try:
         if db_type == "POSTGRES":
             cur.execute("ALTER TABLE docs ADD COLUMN IF NOT EXISTS user_id TEXT;")
         else:
-            # SQLite не поддерживает IF NOT EXISTS в ALTER, проверяем хитро
-            try:
-                cur.execute("ALTER TABLE docs ADD COLUMN user_id TEXT;")
-            except:
-                pass # Колонка уже есть
+            try: cur.execute("ALTER TABLE docs ADD COLUMN user_id TEXT;")
+            except: pass 
         conn.commit()
     except Exception as e:
         logger.warning(f"Migration warning: {e}")
 
     conn.close()
-    logger.info(f"Database initialized using: {db_type}")
+    logger.info(f"Database initialized: {db_type}")
 
 db_init()
 
@@ -100,13 +96,10 @@ def extract_text_from_file(filepath: str, filename: str, content_type: str = Non
     mime_type = content_type
     if not mime_type:
         mime_type, _ = mimetypes.guess_type(filepath)
-    
     if not mime_type and (filename.lower().endswith(('.jpg', '.jpeg', '.png'))):
         mime_type = 'image/jpeg'
 
-    logger.info(f"📂 Processing: {filename} | Type: {mime_type}")
     text = ""
-    
     try:
         if mime_type and mime_type.startswith('image'):
             if CLIENT:
@@ -199,9 +192,8 @@ def analyze_one(req: AnalyzeReq):
     if not req.text or len(req.text.strip()) < 10:
         return JSONResponse(content={"risk_score": 0, "summary": "Text unclear.", "risks": []})
     raw = call_gemini(READABLE_PROMPT_TEMPLATE, req.text, req.language)
-    if not raw: return JSONResponse(content={"risk_score": 0, "summary": "Service Unavailable", "risks": []})
     try:
-        clean = raw.replace("```json", "").replace("```", "").strip()
+        clean = raw.replace("```json", "").replace("```", "").strip() if raw else "{}"
         return JSONResponse(content=json.loads(clean))
     except:
         return JSONResponse(content={"risk_score": 0, "summary": "Error parsing AI", "risks": []})
@@ -211,12 +203,33 @@ def rewrite_clause(req: RewriteReq):
     res = call_gemini(REWRITE_PROMPT_TEMPLATE, req.clause, req.language)
     return {"safe_clause": res or "Error generating fix."}
 
-# 👇 ОБНОВЛЕННЫЙ UPLOAD: ТЕПЕРЬ ПРИНИМАЕТ USER_ID
+# 👇 НОВАЯ ФУНКЦИЯ: ИСТОРИЯ
+@app.get("/history/{user_id}")
+def get_history(user_id: str):
+    conn, db_type = get_db_connection()
+    cur = conn.cursor()
+    
+    # Запрос в базу
+    query = "SELECT doc_id, filename, created_at FROM docs WHERE user_id = %s ORDER BY created_at DESC"
+    if db_type == "SQLITE":
+        query = query.replace("%s", "?")
+    
+    cur.execute(query, (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    
+    # Превращаем ответ базы в красивый список
+    history = []
+    for r in rows:
+        history.append({
+            "doc_id": r[0],
+            "filename": r[1],
+            "date": time.strftime('%Y-%m-%d', time.localtime(r[2])) if r[2] else "Unknown"
+        })
+    return history
+
 @app.post("/upload")
-async def upload(
-    file: UploadFile = File(...), 
-    user_id: Optional[str] = Form(None) # 👈 Новое поле!
-):
+async def upload(file: UploadFile = File(...), user_id: Optional[str] = Form(None)):
     temp_path = os.path.join(UPLOAD_DIR, file.filename)
     with open(temp_path, "wb") as f:
         f.write(await file.read())
@@ -230,7 +243,6 @@ async def upload(
     
     try:
         if db_type == "POSTGRES":
-            # Сохраняем user_id вместе с файлом
             query = """
                 INSERT INTO docs (doc_id, user_id, filename, plain_text, created_at)
                 VALUES (%s, %s, %s, %s, %s)
@@ -241,7 +253,6 @@ async def upload(
         else:
             query = "INSERT OR REPLACE INTO docs (doc_id, user_id, filename, plain_text, created_at) VALUES (?, ?, ?, ?, ?)"
             cur.execute(query, (doc_id, user_id, file.filename, text, created_at))
-            
         conn.commit()
     except Exception as e:
         logger.error(f"DB Error: {e}")
@@ -249,18 +260,13 @@ async def upload(
         conn.close()
     
     is_valid = len(text.strip()) > 2
-    return {
-        "doc_id": doc_id, 
-        "valid": is_valid, 
-        "preview": text[:200] if is_valid else "Unreadable"
-    }
+    return {"doc_id": doc_id, "valid": is_valid, "preview": text[:200] if is_valid else "Unreadable"}
 
 @app.post("/analyze_by_doc_id")
 def analyze_by_doc_id(req: AnalyzeDocReq):
     conn, db_type = get_db_connection()
     cur = conn.cursor()
     placeholder = "%s" if db_type == "POSTGRES" else "?"
-    
     cur.execute(f"SELECT plain_text FROM docs WHERE doc_id={placeholder}", (req.doc_id,))
     row = cur.fetchone()
     conn.close()
