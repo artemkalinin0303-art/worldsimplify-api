@@ -7,7 +7,6 @@ import mimetypes
 import logging
 from typing import List, Optional
 
-# 👇 ПОДКЛЮЧЕНИЕ POSTGRES
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -19,12 +18,8 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-
-# Чтение файлов
 import pypdf
 import docx
-
-# Google Gemini
 from google.genai import Client
 
 load_dotenv()
@@ -42,7 +37,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- 🔌 БАЗА ДАННЫХ ---
+# --- БАЗА ДАННЫХ ---
 def get_db_connection():
     if DATABASE_URL and psycopg2:
         try:
@@ -58,7 +53,7 @@ def db_init():
     conn, db_type = get_db_connection()
     cur = conn.cursor()
     
-    # 1. Основная таблица
+    # Создаем таблицу
     cur.execute("""
     CREATE TABLE IF NOT EXISTS docs(
         doc_id TEXT PRIMARY KEY,
@@ -67,14 +62,16 @@ def db_init():
         plain_text TEXT,
         created_at BIGINT,
         risk_score INTEGER,
-        summary TEXT
+        summary TEXT,
+        full_report TEXT
     )""")
     
-    # 2. ⚡️ МИГРАЦИЯ: Добавляем колонки, если их не было (для старых баз)
+    # ⚡️ МИГРАЦИЯ: Добавляем колонку full_report, если её нет
     columns_to_add = [
         ("user_id", "TEXT"),
         ("risk_score", "INTEGER"),
-        ("summary", "TEXT")
+        ("summary", "TEXT"),
+        ("full_report", "TEXT") # 👈 Новая колонка для полного отчета
     ]
     
     for col_name, col_type in columns_to_add:
@@ -201,29 +198,23 @@ def rewrite_clause(req: RewriteReq):
     res = call_gemini(REWRITE_PROMPT_TEMPLATE, req.clause, req.language)
     return {"safe_clause": res or "Error generating fix."}
 
-# 👇 ОБНОВЛЕННАЯ ИСТОРИЯ: Теперь возвращает ОЦЕНКУ и САММАРИ
 @app.get("/history/{user_id}")
 def get_history(user_id: str):
     conn, db_type = get_db_connection()
     cur = conn.cursor()
-    
-    # Запрашиваем score и summary
     query = "SELECT doc_id, filename, created_at, risk_score, summary FROM docs WHERE user_id = %s ORDER BY created_at DESC"
-    if db_type == "SQLITE":
-        query = query.replace("%s", "?")
-    
+    if db_type == "SQLITE": query = query.replace("%s", "?")
     cur.execute(query, (user_id,))
     rows = cur.fetchall()
     conn.close()
-    
     history = []
     for r in rows:
         history.append({
             "doc_id": r[0],
             "filename": r[1],
             "date": time.strftime('%Y-%m-%d', time.localtime(r[2])) if r[2] else "Unknown",
-            "risk_score": r[3], # 👈 Теперь тут будет число!
-            "summary": r[4]     # 👈 И краткое описание
+            "risk_score": r[3], 
+            "summary": r[4]
         })
     return history
 
@@ -232,14 +223,12 @@ async def upload(file: UploadFile = File(...), user_id: Optional[str] = Form(Non
     temp_path = os.path.join(UPLOAD_DIR, file.filename)
     with open(temp_path, "wb") as f:
         f.write(await file.read())
-    
     doc_id = file_sha256(temp_path)
     text = extract_text_from_file(temp_path, file.filename, content_type=file.content_type)
     
     conn, db_type = get_db_connection()
     cur = conn.cursor()
     created_at = int(time.time())
-    
     try:
         if db_type == "POSTGRES":
             query = """
@@ -257,57 +246,63 @@ async def upload(file: UploadFile = File(...), user_id: Optional[str] = Form(Non
         logger.error(f"DB Error: {e}")
     finally:
         conn.close()
-    
-    is_valid = len(text.strip()) > 2
-    return {"doc_id": doc_id, "valid": is_valid, "preview": text[:200] if is_valid else "Unreadable"}
+    return {"doc_id": doc_id, "valid": len(text.strip()) > 2, "preview": text[:200]}
 
 @app.post("/analyze_one")
 def analyze_one(req: AnalyzeReq):
-    # (Для простого текста сохранение не делаем, так как нет файла)
     raw = call_gemini(READABLE_PROMPT_TEMPLATE, req.text, req.language)
     try:
-        clean = raw.replace("```json", "").replace("```", "").strip() if raw else "{}"
-        return JSONResponse(content=json.loads(clean))
+        return JSONResponse(content=json.loads(raw.replace("```json", "").replace("```", "").strip()))
     except:
         return JSONResponse(content={"risk_score": 0, "summary": "Error parsing AI", "risks": []})
 
-# 👇 ГЛАВНОЕ ОБНОВЛЕНИЕ: Анализ теперь сохраняет результат в БД!
+# 👇 ГЛАВНАЯ ФИШКА: УМНЫЙ КЕШ
 @app.post("/analyze_by_doc_id")
 def analyze_by_doc_id(req: AnalyzeDocReq):
     conn, db_type = get_db_connection()
     cur = conn.cursor()
     placeholder = "%s" if db_type == "POSTGRES" else "?"
     
-    # 1. Берем текст файла
-    cur.execute(f"SELECT plain_text FROM docs WHERE doc_id={placeholder}", (req.doc_id,))
+    # 1. Проверяем: есть ли уже ГОТОВЫЙ отчет?
+    cur.execute(f"SELECT plain_text, full_report FROM docs WHERE doc_id={placeholder}", (req.doc_id,))
     row = cur.fetchone()
     
     if not row: 
         conn.close()
         raise HTTPException(404, "File not found")
     
-    # 2. Спрашиваем ИИ
-    raw = call_gemini(READABLE_PROMPT_TEMPLATE, row[0], req.language)
+    plain_text = row[0]
+    existing_report = row[1]
+
+    # ✅ ЕСЛИ ОТЧЕТ ЕСТЬ — ВОЗВРАЩАЕМ МГНОВЕННО
+    if existing_report and len(existing_report) > 10:
+        logger.info(f"🚀 Serving cached report for {req.doc_id}")
+        conn.close()
+        return JSONResponse(content=json.loads(existing_report))
+
+    # 2. Если нет — спрашиваем ИИ
+    logger.info(f"🤖 Calling AI for {req.doc_id}")
+    raw = call_gemini(READABLE_PROMPT_TEMPLATE, plain_text, req.language)
     
     try:
         clean = raw.replace("```json", "").replace("```", "").strip() if raw else "{}"
         result_json = json.loads(clean)
         
-        # 3. 🔥 СОХРАНЯЕМ ОЦЕНКУ И САММАРИ В БАЗУ 🔥
+        # 3. Сохраняем отчет в базу НАВЕЧНО
         risk_score = result_json.get("risk_score", 0)
         summary = result_json.get("summary", "")
+        full_report_str = json.dumps(result_json) # Превращаем JSON в строку для сохранения
         
         try:
             if db_type == "POSTGRES":
-                update_q = "UPDATE docs SET risk_score = %s, summary = %s WHERE doc_id = %s"
+                update_q = "UPDATE docs SET risk_score = %s, summary = %s, full_report = %s WHERE doc_id = %s"
             else:
-                update_q = "UPDATE docs SET risk_score = ?, summary = ? WHERE doc_id = ?"
+                update_q = "UPDATE docs SET risk_score = ?, summary = ?, full_report = ? WHERE doc_id = ?"
             
-            cur.execute(update_q, (risk_score, summary, req.doc_id))
+            cur.execute(update_q, (risk_score, summary, full_report_str, req.doc_id))
             conn.commit()
-            logger.info(f"✅ Saved score {risk_score} for doc {req.doc_id}")
         except Exception as db_err:
-            logger.error(f"Failed to save score: {db_err}")
+            logger.error(f"Failed to save report: {db_err}")
 
         conn.close()
         return JSONResponse(content=result_json)
