@@ -113,23 +113,45 @@ def extract_text_from_file(filepath: str, filename: str, content_type: str = Non
     except: return ""
     return text.strip()
 
-# --- ПРОМПТЫ ---
+# 👇 ФИНАЛЬНЫЙ ПРОМПТ: УМНАЯ ЮРИСДИКЦИЯ
 READABLE_PROMPT_TEMPLATE = """
 ROLE: Senior Legal Risk Auditor (Shark-style).
-TASK: Analyze contract to protect the Client.
-LANGUAGE: {language}.
+TASK: Analyze the contract to protect the Client.
+TARGET LANGUAGE: {language}.
+
+PHASE 1: DETECT JURISDICTION (CRITICAL!)
+1. IF LANGUAGE is 'ru' -> Force Jurisdiction: Russian Federation (Civil Code, Labor Code).
+2. IF LANGUAGE is 'uk' -> Force Jurisdiction: Ukraine (Constitution, Labor Code).
+3. IF LANGUAGE is 'en' or other -> DETECT FROM TEXT:
+   - Look for "Governing Law" clause (e.g., "Laws of California", "Laws of England and Wales").
+   - Look for Locations (e.g., "Dublin" -> Ireland, "London" -> UK, "New York" -> USA).
+   - Look for Currency (€ -> EU/Ireland, £ -> UK, $ -> USA).
+   - IF UNSURE: Default to "General Common Law" but warn the user.
+
+PHASE 2: ANALYZE RISKS
+- Apply the detected laws strictly.
+- For USA: Watch out for "At-will employment" (normal there, but risky).
+- For UK/Ireland: Watch out for "Unfair Dismissal" rights violations.
+- For Russia/Ukraine: Watch out for "Illegal Fines" and "Data Processing" violations.
+
+PHASE 3: REPORT GENERATION (IN {language})
+- Translate Summary and Risks to {language}.
+- Keep original quotes in original language.
 
 STRICT JSON OUTPUT:
 {{
   "risk_score": integer (0-100),
   "contract_type": "string",
-  "summary": "string",
-  "risks": [ {{ "text": "string", "severity": "High|Medium|Low", "original_clause": "string", "explanation": "string" }} ]
+  "summary": "string (Start with: 'Jurisdiction detected: [Country]...')", 
+  "risks": [
+    {{
+      "text": "string (Risk title in {language})",
+      "severity": "High|Medium|Low",
+      "original_clause": "string",
+      "explanation": "string (Explain WHY it is bad under [Country] law)"
+    }}
+  ]
 }}
-
-GUIDELINES:
-1. FOCUS: Auto-renewal, hidden fees, IP theft, unlimited liability.
-2. SCORING: 0-20 (Safe) to 76-100 (Toxic).
 """
 
 # 👇 НОВЫЙ ПРОМПТ ДЛЯ ПЕРЕВОДА ГОТОВОГО JSON
