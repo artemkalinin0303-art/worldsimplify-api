@@ -63,7 +63,7 @@ def db_init():
         summary TEXT,
         full_report TEXT
     )""")
-    # Миграции (на всякий случай)
+    # Миграции
     columns = [("user_id", "TEXT"), ("risk_score", "INTEGER"), ("summary", "TEXT"), ("full_report", "TEXT")]
     for col, type_ in columns:
         try:
@@ -82,135 +82,84 @@ def file_sha256(filepath):
         for chunk in iter(lambda: f.read(4096), b""): h.update(chunk)
     return h.hexdigest()
 
-# 👇 УЛУЧШЕННАЯ ФУНКЦИЯ ЧТЕНИЯ ФАЙЛОВ
 def extract_text_from_file(filepath: str, filename: str, content_type: str = None) -> str:
-    # 1. Определяем тип файла более агрессивно
     mime = content_type
-    if not mime or mime == 'application/octet-stream':
-        mime, _ = mimetypes.guess_type(filepath)
-    
-    # Если расширение явное, верим ему
+    if not mime or mime == 'application/octet-stream': mime, _ = mimetypes.guess_type(filepath)
     ext = filename.lower().split('.')[-1] if '.' in filename else ""
-    
     is_image = (mime and mime.startswith('image')) or ext in ['jpg', 'jpeg', 'png', 'heic', 'webp']
     is_pdf = (mime and 'pdf' in mime) or ext == 'pdf'
     
-    logger.info(f"📂 Processing: {filename} | Mime: {mime} | IsImage: {is_image} | IsPDF: {is_pdf}")
-    
     text = ""
-    
     try:
-        # ВАРИАНТ 1: КАРТИНКИ (Сразу в Gemini Vision)
-        if is_image:
-            if CLIENT:
-                logger.info("👀 Sending image to Gemini Vision...")
-                with open(filepath, "rb") as f:
-                    image_data = f.read()
-                try:
-                    resp = CLIENT.models.generate_content(
-                        model="gemini-2.0-flash", 
-                        contents=["Transcribe ALL text from this image exactly as is. Do not summarize.", {"mime_type": "image/jpeg", "data": image_data}]
-                    )
-                    text = resp.text if resp.text else ""
-                except Exception as e:
-                    logger.error(f"OCR Error: {e}")
-        
-        # ВАРИАНТ 2: PDF
+        if is_image and CLIENT:
+            with open(filepath, "rb") as f: image_data = f.read()
+            try:
+                resp = CLIENT.models.generate_content(
+                    model="gemini-2.0-flash", 
+                    contents=["Transcribe ALL text exactly.", {"mime_type": "image/jpeg", "data": image_data}]
+                )
+                text = resp.text if resp.text else ""
+            except: pass
         elif is_pdf:
             try:
-                # Сначала пробуем быстро прочитать текст
                 reader = pypdf.PdfReader(filepath)
-                for page in reader.pages:
-                    extracted = page.extract_text()
-                    if extracted: text += extracted + "\n"
-                
-                # ЕСЛИ ТЕКСТА МАЛО (значит это скан), пробуем прочитать как картинку через ИИ (если файл небольшой)
-                if len(text.strip()) < 50 and CLIENT and len(reader.pages) < 5:
-                    logger.info("📄 PDF seems empty/scanned. Trying AI Vision...")
-                    # Это сложная логика, для MVP просто вернем что есть, 
-                    # но в идеале тут надо конвертировать PDF в картинки.
-                    pass 
-            except Exception as e:
-                logger.error(f"PDF Error: {e}")
-
-        # ВАРИАНТ 3: WORD
+                for page in reader.pages: text += (page.extract_text() or "") + "\n"
+            except: pass
         elif ext == 'docx':
             doc = docx.Document(filepath)
             for para in doc.paragraphs: text += para.text + "\n"
-            
-        # ВАРИАНТ 4: ТЕКСТ
         else:
-            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                text = f.read()
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f: text = f.read()
+    except: return ""
+    return text.strip()
 
-    except Exception as e:
-        logger.error(f"Global Extraction Error: {e}")
-        return ""
-        
-    final_text = text.strip()
-    logger.info(f"✅ Extracted {len(final_text)} chars")
-    return final_text
-
-# --- 👇 НОВЫЙ, БОЛЕЕ СТРОГИЙ ПРОМПТ ---
+# --- ПРОМПТЫ ---
 READABLE_PROMPT_TEMPLATE = """
 ROLE: Senior Legal Risk Auditor (Shark-style).
-TASK: Analyze the contract text to protect the Client (User).
+TASK: Analyze contract to protect the Client.
 LANGUAGE: {language}.
 
-STRICT OUTPUT FORMAT (JSON ONLY):
+STRICT JSON OUTPUT:
 {{
-  "risk_score": integer (0-100), // 0 = Safe, 100 = Extremely Dangerous
-  "contract_type": "string", // e.g., "NDA", "Lease", "Employment"
-  "summary": "string", // 1 sentence executive summary
-  "risks": [
-    {{
-      "text": "string", // Short title of the risk (max 5 words)
-      "severity": "High|Medium|Low",
-      "original_clause": "string", // Quote the EXACT text from contract
-      "explanation": "string" // Why is this bad?
-    }}
-  ]
+  "risk_score": integer (0-100),
+  "contract_type": "string",
+  "summary": "string",
+  "risks": [ {{ "text": "string", "severity": "High|Medium|Low", "original_clause": "string", "explanation": "string" }} ]
 }}
 
-ANALYSIS GUIDELINES:
-1. FOCUS ON "SILENT KILLERS": Auto-renewal, unlimited liability, hidden fees, IP theft, non-compete > 1 year.
-2. BE CYNICAL: Assume the other party is trying to trick the Client.
-3. SCORING:
-   - 0-20: Standard safe contract.
-   - 21-50: Minor issues, negotiable.
-   - 51-75: Serious risks, needs changes.
-   - 76-100: TOXIC. Do not sign.
+GUIDELINES:
+1. FOCUS: Auto-renewal, hidden fees, IP theft, unlimited liability.
+2. SCORING: 0-20 (Safe) to 76-100 (Toxic).
+"""
+
+# 👇 НОВЫЙ ПРОМПТ ДЛЯ ПЕРЕВОДА ГОТОВОГО JSON
+TRANSLATE_JSON_TEMPLATE = """
+TASK: Translate the values in this JSON object to {language}.
+Do NOT translate keys (like "risk_score", "risks", "text").
+Only translate the content strings (summary, text, explanation, contract_type).
+Keep the structure exactly the same.
+JSON:
+{json_content}
 """
 
 REWRITE_PROMPT_TEMPLATE = """
-ROLE: Expert Legal Drafter.
-TASK: Rewrite the following clause to be FAIR and SAFE for the Client.
-INPUT CLAUSE: "{clause}"
-CONTEXT: International/Common Law.
-LANGUAGE: {language}.
-OUTPUT: Only the new text. No explanations.
+Rewrite clause to be SAFE. Language: {language}. Output ONLY new text.
 """
 
-def call_gemini(template, content, language="en", clause=None):
-    if clause: # Для переписывания
-        final_prompt = template.format(language=language, clause=content)
-        user_content = "Fix this clause."
-    else: # Для анализа
-        final_prompt = template.format(language=language)
-        user_content = content
+def call_gemini(template, content, language="en", json_mode=False):
+    prompt = template.format(language=language, json_content=content) if json_mode else template.format(language=language)
+    user_content = "Translate this JSON." if json_mode else content
 
     if not CLIENT: return None
     for model in MODEL_CANDIDATES:
         try:
             resp = CLIENT.models.generate_content(
                 model=model, 
-                contents=f"SYSTEM: {final_prompt}\n\nUSER DATA:\n{user_content}",
-                config={"response_mime_type": "application/json" if not clause else "text/plain"}
+                contents=f"SYSTEM: {prompt}\n\nDATA:\n{user_content}",
+                config={"response_mime_type": "application/json" if not "Rewrite" in template else "text/plain"}
             )
             return resp.text.strip()
-        except Exception as e:
-            logger.error(f"Model {model} failed: {e}")
-            continue
+        except: continue
     return None
 
 # --- API ---
@@ -238,9 +187,7 @@ def delete_document(doc_id: str):
         cur.execute(q, (doc_id,))
         conn.commit()
         return {"status": "ok"}
-    except Exception as e:
-        logger.error(f"Delete error: {e}")
-        raise HTTPException(500, "Failed")
+    except: raise HTTPException(500, "Failed")
     finally: conn.close()
 
 @app.get("/history/{user_id}")
@@ -256,23 +203,19 @@ def get_history(user_id: str):
 
 @app.post("/rewrite_clause")
 def rewrite_clause(req: RewriteReq):
-    res = call_gemini(REWRITE_PROMPT_TEMPLATE, req.clause, req.language, clause=True)
+    res = call_gemini(REWRITE_PROMPT_TEMPLATE, req.clause, req.language)
     return {"safe_clause": res or "Error generating fix."}
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...), user_id: Optional[str] = Form(None)):
     temp_path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(temp_path, "wb") as f:
-        f.write(await file.read())
-    
+    with open(temp_path, "wb") as f: f.write(await file.read())
     doc_id = file_sha256(temp_path)
-    # Передаем content_type прямо с телефона для точности
     text = extract_text_from_file(temp_path, file.filename, content_type=file.content_type)
     
     conn, db_type = get_db_connection()
     cur = conn.cursor()
     created_at = int(time.time())
-    
     try:
         q = """
             INSERT INTO docs (doc_id, user_id, filename, plain_text, created_at)
@@ -280,19 +223,14 @@ async def upload(file: UploadFile = File(...), user_id: Optional[str] = Form(Non
             ON CONFLICT (doc_id) DO UPDATE 
             SET filename = EXCLUDED.filename, plain_text = EXCLUDED.plain_text, user_id = EXCLUDED.user_id;
         """ if db_type == "POSTGRES" else "INSERT OR REPLACE INTO docs (doc_id, user_id, filename, plain_text, created_at) VALUES (?, ?, ?, ?, ?)"
-        
-        # Если текста вообще нет (0 символов), сохраняем заглушку, но помечаем файл как valid=False в ответе
         final_text = text if text else ""
         cur.execute(q.replace("%s", "?") if db_type == "SQLITE" else q, (doc_id, user_id, file.filename, final_text, created_at))
         conn.commit()
-    except Exception as e:
-        logger.error(f"DB Error: {e}")
-    finally:
-        conn.close()
+    except Exception as e: logger.error(f"DB Error: {e}")
+    finally: conn.close()
     
-    # Снизил порог валидации до 1 символа, иногда OCR выдает мало текста, но это лучше чем ошибка
     is_valid = len(text.strip()) > 1
-    return {"doc_id": doc_id, "valid": is_valid, "preview": text[:200] if is_valid else "Could not read text. Try a clearer photo."}
+    return {"doc_id": doc_id, "valid": is_valid, "preview": text[:200] if is_valid else "Could not read text."}
 
 @app.post("/analyze_by_doc_id")
 def analyze_by_doc_id(req: AnalyzeDocReq):
@@ -308,18 +246,31 @@ def analyze_by_doc_id(req: AnalyzeDocReq):
         
     plain_text, existing_report = row[0], row[1]
 
-    # КЕШ
+    # ✅ УМНЫЙ ПЕРЕВОД КЕША
+    # Если отчет уже есть, мы не анализируем файл заново.
+    # Но мы просим ИИ перевести этот JSON на нужный язык.
     if existing_report and len(existing_report) > 10:
-        conn.close()
-        try: return JSONResponse(content=json.loads(existing_report))
-        except: pass # Если кеш битый, переделываем
+        logger.info(f"🔄 Translating cached report for {req.doc_id} to {req.language}")
+        try:
+            # 1. Пробуем перевести готовый JSON
+            translated_raw = call_gemini(TRANSLATE_JSON_TEMPLATE, existing_report, req.language, json_mode=True)
+            translated_json = json.loads(translated_raw.replace("```json", "").replace("```", "").strip())
+            conn.close()
+            return JSONResponse(content=translated_json)
+        except Exception as e:
+            logger.error(f"Translation failed, returning original: {e}")
+            conn.close()
+            return JSONResponse(content=json.loads(existing_report))
 
-    # ИИ
+    # Если отчета нет — полный анализ
+    logger.info(f"🤖 Full Analysis for {req.doc_id}")
     raw = call_gemini(READABLE_PROMPT_TEMPLATE, plain_text, req.language)
+    
     try:
-        clean = raw.replace("```json", "").replace("```", "").strip()
+        clean = raw.replace("```json", "").replace("```", "").strip() if raw else "{}"
         result_json = json.loads(clean)
         
+        # Сохраняем в базу (первичный язык)
         risk_score = result_json.get("risk_score", 0)
         summary = result_json.get("summary", "")
         full_report = json.dumps(result_json)
