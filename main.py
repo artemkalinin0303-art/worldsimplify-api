@@ -310,7 +310,29 @@ def analyze_by_doc_id(req: AnalyzeDocReq):
     except:
         conn.close()
         return JSONResponse(content={"risk_score": 0, "summary": "Error parsing result", "risks": []})
-
+# 👇 НОВАЯ ФУНКЦИЯ: УДАЛЕНИЕ ДОКУМЕНТА
+@app.delete("/delete/{doc_id}")
+def delete_document(doc_id: str):
+    conn, db_type = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        # 1. Удаляем из базы
+        if db_type == "POSTGRES":
+            cur.execute("DELETE FROM docs WHERE doc_id = %s", (doc_id,))
+        else:
+            cur.execute("DELETE FROM docs WHERE doc_id = ?", (doc_id,))
+            
+        conn.commit()
+        
+        logger.info(f"🗑 Deleted doc: {doc_id}")
+        return {"status": "ok", "message": "Document deleted"}
+        
+    except Exception as e:
+        logger.error(f"Error deleting: {e}")
+        raise HTTPException(500, "Failed to delete")
+    finally:
+        conn.close()
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
