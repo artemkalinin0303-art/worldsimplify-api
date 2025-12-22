@@ -7,7 +7,7 @@ import mimetypes
 import logging
 from typing import List, Optional
 
-# 👇 БИБЛИОТЕКА ДЛЯ POSTGRES
+# 👇 ПОДКЛЮЧЕНИЕ POSTGRES
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -39,7 +39,6 @@ UPLOAD_DIR = "uploads"
 DB_PATH = "worldsimplify.db"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Логи
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -58,27 +57,37 @@ def get_db_connection():
 def db_init():
     conn, db_type = get_db_connection()
     cur = conn.cursor()
-    # Создаем таблицу
+    
+    # 1. Основная таблица
     cur.execute("""
     CREATE TABLE IF NOT EXISTS docs(
         doc_id TEXT PRIMARY KEY,
         user_id TEXT,
         filename TEXT,
         plain_text TEXT,
-        created_at BIGINT
+        created_at BIGINT,
+        risk_score INTEGER,
+        summary TEXT
     )""")
     
-    # Миграция: добавляем user_id если его нет
-    try:
-        if db_type == "POSTGRES":
-            cur.execute("ALTER TABLE docs ADD COLUMN IF NOT EXISTS user_id TEXT;")
-        else:
-            try: cur.execute("ALTER TABLE docs ADD COLUMN user_id TEXT;")
-            except: pass 
-        conn.commit()
-    except Exception as e:
-        logger.warning(f"Migration warning: {e}")
+    # 2. ⚡️ МИГРАЦИЯ: Добавляем колонки, если их не было (для старых баз)
+    columns_to_add = [
+        ("user_id", "TEXT"),
+        ("risk_score", "INTEGER"),
+        ("summary", "TEXT")
+    ]
+    
+    for col_name, col_type in columns_to_add:
+        try:
+            if db_type == "POSTGRES":
+                cur.execute(f"ALTER TABLE docs ADD COLUMN IF NOT EXISTS {col_name} {col_type};")
+            else:
+                try: cur.execute(f"ALTER TABLE docs ADD COLUMN {col_name} {col_type};")
+                except: pass 
+        except Exception as e:
+            logger.warning(f"Migration warning for {col_name}: {e}")
 
+    conn.commit()
     conn.close()
     logger.info(f"Database initialized: {db_type}")
 
@@ -187,30 +196,19 @@ class RewriteReq(BaseModel):
     clause: str
     language: str = "en"
 
-@app.post("/analyze_one")
-def analyze_one(req: AnalyzeReq):
-    if not req.text or len(req.text.strip()) < 10:
-        return JSONResponse(content={"risk_score": 0, "summary": "Text unclear.", "risks": []})
-    raw = call_gemini(READABLE_PROMPT_TEMPLATE, req.text, req.language)
-    try:
-        clean = raw.replace("```json", "").replace("```", "").strip() if raw else "{}"
-        return JSONResponse(content=json.loads(clean))
-    except:
-        return JSONResponse(content={"risk_score": 0, "summary": "Error parsing AI", "risks": []})
-
 @app.post("/rewrite_clause")
 def rewrite_clause(req: RewriteReq):
     res = call_gemini(REWRITE_PROMPT_TEMPLATE, req.clause, req.language)
     return {"safe_clause": res or "Error generating fix."}
 
-# 👇 НОВАЯ ФУНКЦИЯ: ИСТОРИЯ
+# 👇 ОБНОВЛЕННАЯ ИСТОРИЯ: Теперь возвращает ОЦЕНКУ и САММАРИ
 @app.get("/history/{user_id}")
 def get_history(user_id: str):
     conn, db_type = get_db_connection()
     cur = conn.cursor()
     
-    # Запрос в базу
-    query = "SELECT doc_id, filename, created_at FROM docs WHERE user_id = %s ORDER BY created_at DESC"
+    # Запрашиваем score и summary
+    query = "SELECT doc_id, filename, created_at, risk_score, summary FROM docs WHERE user_id = %s ORDER BY created_at DESC"
     if db_type == "SQLITE":
         query = query.replace("%s", "?")
     
@@ -218,13 +216,14 @@ def get_history(user_id: str):
     rows = cur.fetchall()
     conn.close()
     
-    # Превращаем ответ базы в красивый список
     history = []
     for r in rows:
         history.append({
             "doc_id": r[0],
             "filename": r[1],
-            "date": time.strftime('%Y-%m-%d', time.localtime(r[2])) if r[2] else "Unknown"
+            "date": time.strftime('%Y-%m-%d', time.localtime(r[2])) if r[2] else "Unknown",
+            "risk_score": r[3], # 👈 Теперь тут будет число!
+            "summary": r[4]     # 👈 И краткое описание
         })
     return history
 
@@ -262,22 +261,59 @@ async def upload(file: UploadFile = File(...), user_id: Optional[str] = Form(Non
     is_valid = len(text.strip()) > 2
     return {"doc_id": doc_id, "valid": is_valid, "preview": text[:200] if is_valid else "Unreadable"}
 
+@app.post("/analyze_one")
+def analyze_one(req: AnalyzeReq):
+    # (Для простого текста сохранение не делаем, так как нет файла)
+    raw = call_gemini(READABLE_PROMPT_TEMPLATE, req.text, req.language)
+    try:
+        clean = raw.replace("```json", "").replace("```", "").strip() if raw else "{}"
+        return JSONResponse(content=json.loads(clean))
+    except:
+        return JSONResponse(content={"risk_score": 0, "summary": "Error parsing AI", "risks": []})
+
+# 👇 ГЛАВНОЕ ОБНОВЛЕНИЕ: Анализ теперь сохраняет результат в БД!
 @app.post("/analyze_by_doc_id")
 def analyze_by_doc_id(req: AnalyzeDocReq):
     conn, db_type = get_db_connection()
     cur = conn.cursor()
     placeholder = "%s" if db_type == "POSTGRES" else "?"
+    
+    # 1. Берем текст файла
     cur.execute(f"SELECT plain_text FROM docs WHERE doc_id={placeholder}", (req.doc_id,))
     row = cur.fetchone()
-    conn.close()
     
-    if not row: raise HTTPException(404, "File not found")
+    if not row: 
+        conn.close()
+        raise HTTPException(404, "File not found")
     
+    # 2. Спрашиваем ИИ
     raw = call_gemini(READABLE_PROMPT_TEMPLATE, row[0], req.language)
+    
     try:
         clean = raw.replace("```json", "").replace("```", "").strip() if raw else "{}"
-        return JSONResponse(content=json.loads(clean))
+        result_json = json.loads(clean)
+        
+        # 3. 🔥 СОХРАНЯЕМ ОЦЕНКУ И САММАРИ В БАЗУ 🔥
+        risk_score = result_json.get("risk_score", 0)
+        summary = result_json.get("summary", "")
+        
+        try:
+            if db_type == "POSTGRES":
+                update_q = "UPDATE docs SET risk_score = %s, summary = %s WHERE doc_id = %s"
+            else:
+                update_q = "UPDATE docs SET risk_score = ?, summary = ? WHERE doc_id = ?"
+            
+            cur.execute(update_q, (risk_score, summary, req.doc_id))
+            conn.commit()
+            logger.info(f"✅ Saved score {risk_score} for doc {req.doc_id}")
+        except Exception as db_err:
+            logger.error(f"Failed to save score: {db_err}")
+
+        conn.close()
+        return JSONResponse(content=result_json)
+        
     except:
+        conn.close()
         return JSONResponse(content={"risk_score": 0, "summary": "Error parsing result", "risks": []})
 
 if __name__ == "__main__":
