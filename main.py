@@ -81,35 +81,128 @@ def file_sha256(filepath):
         for chunk in iter(lambda: f.read(4096), b""): h.update(chunk)
     return h.hexdigest()
 
-def extract_text_from_file(filepath: str, filename: str, content_type: str = None) -> str:
-    mime = content_type
-    if not mime or mime == 'application/octet-stream': mime, _ = mimetypes.guess_type(filepath)
+def get_mime_type_for_image(filename: str) -> str:
+    """Определяет правильный MIME type для изображения"""
     ext = filename.lower().split('.')[-1] if '.' in filename else ""
-    is_image = (mime and mime.startswith('image')) or ext in ['jpg', 'jpeg', 'png', 'heic', 'webp']
+    mime_map = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'heic': 'image/heic',
+        'webp': 'image/webp',
+        'gif': 'image/gif',
+        'bmp': 'image/bmp'
+    }
+    return mime_map.get(ext, 'image/jpeg')
+
+def extract_text_from_file(filepath: str, filename: str, content_type: str = None) -> str:
+    """
+    Universal Reader: Извлекает текст из файлов разных форматов.
+    Для PDF: сначала pypdf, если текста <50 символов - Gemini Vision OCR.
+    Для изображений: сразу Gemini Vision OCR (лучше видит рукописный текст и плохие фото).
+    """
+    mime = content_type
+    if not mime or mime == 'application/octet-stream': 
+        mime, _ = mimetypes.guess_type(filepath)
+    ext = filename.lower().split('.')[-1] if '.' in filename else ""
+    is_image = (mime and mime.startswith('image')) or ext in ['jpg', 'jpeg', 'png', 'heic', 'webp', 'gif', 'bmp']
     is_pdf = (mime and 'pdf' in mime) or ext == 'pdf'
     
     text = ""
+    
     try:
-        if is_image and CLIENT:
-            with open(filepath, "rb") as f: image_data = f.read()
+        # === ОБРАБОТКА ИЗОБРАЖЕНИЙ: СРАЗУ Gemini Vision ===
+        if is_image:
+            if not CLIENT:
+                logger.warning("Gemini client not available for image OCR")
+                return ""
+            
+            with open(filepath, "rb") as f: 
+                image_data = f.read()
+            
+            # Определяем правильный MIME type для изображения
+            image_mime = get_mime_type_for_image(filename)
+            
             try:
+                logger.info(f"🔍 Using Gemini Vision OCR for image: {filename} (MIME: {image_mime})")
                 resp = CLIENT.models.generate_content(
                     model="gemini-2.0-flash", 
-                    contents=["Transcribe ALL text exactly.", {"mime_type": "image/jpeg", "data": image_data}]
+                    contents=[
+                        "Extract ALL text from this image. Preserve formatting, line breaks, and structure. Transcribe exactly as shown, including handwritten text if present.",
+                        {"mime_type": image_mime, "data": image_data}
+                    ]
                 )
                 text = resp.text if resp.text else ""
-            except: pass
+                logger.info(f"✅ Extracted {len(text)} characters from image")
+            except Exception as e:
+                logger.error(f"❌ Gemini Vision OCR failed for {filename}: {e}")
+                text = ""
+        
+        # === ОБРАБОТКА PDF: Сначала pypdf, затем Gemini Vision если нужно ===
         elif is_pdf:
+            # Шаг 1: Пробуем извлечь текст через pypdf
             try:
                 reader = pypdf.PdfReader(filepath)
-                for page in reader.pages: text += (page.extract_text() or "") + "\n"
-            except: pass
+                for page in reader.pages: 
+                    page_text = page.extract_text() or ""
+                    text += page_text + "\n"
+                
+                text = text.strip()
+                logger.info(f"📄 Extracted {len(text)} characters from PDF via pypdf")
+                
+                # Шаг 2: Если текста мало (<50 символов), используем Gemini Vision OCR
+                if len(text) < 50 and CLIENT:
+                    logger.info(f"⚠️ PDF has little text ({len(text)} chars), trying Gemini Vision OCR...")
+                    try:
+                        with open(filepath, "rb") as f:
+                            pdf_data = f.read()
+                        
+                        # Отправляем PDF напрямую в Gemini Vision
+                        resp = CLIENT.models.generate_content(
+                            model="gemini-2.0-flash",
+                            contents=[
+                                "Extract ALL text from this PDF document. This appears to be a scanned document. Transcribe ALL text exactly, preserve formatting and structure.",
+                                {"mime_type": "application/pdf", "data": pdf_data}
+                            ]
+                        )
+                        ocr_text = resp.text if resp.text else ""
+                        if len(ocr_text) > len(text):
+                            text = ocr_text
+                            logger.info(f"✅ Gemini Vision OCR extracted {len(text)} characters from PDF")
+                        else:
+                            logger.warning(f"⚠️ Gemini Vision OCR didn't improve extraction ({len(ocr_text)} vs {len(text)} chars)")
+                    except Exception as e:
+                        logger.error(f"❌ Gemini Vision OCR for PDF failed: {e}, using pypdf result")
+            
+            except Exception as e:
+                logger.error(f"❌ PDF extraction failed: {e}")
+                text = ""
+        
+        # === ОБРАБОТКА DOCX ===
         elif ext == 'docx':
-            doc = docx.Document(filepath)
-            for para in doc.paragraphs: text += para.text + "\n"
+            try:
+                doc = docx.Document(filepath)
+                for para in doc.paragraphs: 
+                    text += para.text + "\n"
+                text = text.strip()
+            except Exception as e:
+                logger.error(f"❌ DOCX extraction failed: {e}")
+                text = ""
+        
+        # === ОБРАБОТКА ТЕКСТОВЫХ ФАЙЛОВ ===
         else:
-            with open(filepath, "r", encoding="utf-8", errors="ignore") as f: text = f.read()
-    except: return ""
+            try:
+                with open(filepath, "r", encoding="utf-8", errors="ignore") as f: 
+                    text = f.read()
+                text = text.strip()
+            except Exception as e:
+                logger.error(f"❌ Text file reading failed: {e}")
+                text = ""
+    
+    except Exception as e:
+        logger.error(f"❌ General extraction error for {filename}: {e}")
+        return ""
+    
     return text.strip()
 
 # 👇 ФИНАЛЬНЫЙ ПРОМПТ: SHARK-STYLE AUDITOR (МАКСИМАЛЬНАЯ СТРОГОСТЬ)
@@ -346,30 +439,145 @@ def rewrite_clause(req: RewriteReq):
     return {"safe_clause": res or "Error generating fix."}
 
 @app.post("/upload")
-async def upload(file: UploadFile = File(...), user_id: Optional[str] = Form(None)):
-    temp_path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(temp_path, "wb") as f: f.write(await file.read())
-    doc_id = file_sha256(temp_path)
-    text = extract_text_from_file(temp_path, file.filename, content_type=file.content_type)
+async def upload(files: List[UploadFile] = File(...), user_id: Optional[str] = Form(None)):
+    """
+    Mass Upload: Принимает до 30 файлов, извлекает текст из каждого и объединяет в один документ.
+    """
+    # Лимит: максимум 30 файлов
+    if len(files) > 30:
+        raise HTTPException(status_code=400, detail="Maximum 30 files allowed per upload")
     
-    conn, db_type = get_db_connection()
-    cur = conn.cursor()
-    created_at = int(time.time())
+    if len(files) == 0:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    logger.info(f"📤 Mass upload started: {len(files)} files for user {user_id}")
+    
+    # Список для хранения всех текстов с метаданными
+    extracted_texts = []
+    saved_paths = []  # Для очистки временных файлов
+    
     try:
-        q = """
-            INSERT INTO docs (doc_id, user_id, filename, plain_text, created_at)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (doc_id) DO UPDATE 
-            SET filename = EXCLUDED.filename, plain_text = EXCLUDED.plain_text, user_id = EXCLUDED.user_id;
-        """ if db_type == "POSTGRES" else "INSERT OR REPLACE INTO docs (doc_id, user_id, filename, plain_text, created_at) VALUES (?, ?, ?, ?, ?)"
-        final_text = text if text else ""
-        cur.execute(q.replace("%s", "?") if db_type == "SQLITE" else q, (doc_id, user_id, file.filename, final_text, created_at))
-        conn.commit()
-    except Exception as e: logger.error(f"DB Error: {e}")
-    finally: conn.close()
+        # Обрабатываем каждый файл
+        for idx, file in enumerate(files, 1):
+            try:
+                # Сохраняем файл во временную директорию
+                safe_filename = f"{int(time.time() * 1000)}_{idx}_{file.filename}"
+                temp_path = os.path.join(UPLOAD_DIR, safe_filename)
+                
+                with open(temp_path, "wb") as f:
+                    content = await file.read()
+                    f.write(content)
+                
+                saved_paths.append(temp_path)
+                
+                # Извлекаем текст
+                logger.info(f"📄 Processing file {idx}/{len(files)}: {file.filename}")
+                text = extract_text_from_file(temp_path, file.filename, content_type=file.content_type)
+                
+                if text:
+                    extracted_texts.append({
+                        "filename": file.filename,
+                        "page_num": idx,
+                        "text": text
+                    })
+                    logger.info(f"✅ Extracted {len(text)} characters from {file.filename}")
+                else:
+                    logger.warning(f"⚠️ No text extracted from {file.filename}")
+                    extracted_texts.append({
+                        "filename": file.filename,
+                        "page_num": idx,
+                        "text": ""
+                    })
+            
+            except Exception as e:
+                logger.error(f"❌ Error processing file {file.filename}: {e}")
+                extracted_texts.append({
+                    "filename": file.filename,
+                    "page_num": idx,
+                    "text": f"[Error extracting text from {file.filename}: {str(e)}]"
+                })
+        
+        # Объединяем все тексты с разделителями
+        full_text_parts = []
+        for item in extracted_texts:
+            if item["text"]:
+                full_text_parts.append(f"\n\n--- Page {item['page_num']} ({item['filename']}) ---\n\n")
+                full_text_parts.append(item["text"])
+        
+        full_text = "".join(full_text_parts).strip()
+        
+        # Создаем составное имя файла (первые несколько имен + ...)
+        if len(files) == 1:
+            composite_filename = files[0].filename
+        elif len(files) <= 3:
+            composite_filename = " + ".join(f.filename for f in files)
+        else:
+            composite_filename = f"{files[0].filename} + ... + {files[-1].filename} ({len(files)} files)"
+        
+        # Генерируем doc_id на основе объединенного содержимого
+        # Используем комбинацию всех файлов для создания уникального ID
+        combined_hash_input = "|".join(item["filename"] + ":" + item["text"][:1000] for item in extracted_texts)
+        doc_id = hashlib.sha256(combined_hash_input.encode('utf-8')).hexdigest()
+        
+        # Сохраняем объединенный текст в базу данных как один документ
+        conn, db_type = get_db_connection()
+        cur = conn.cursor()
+        created_at = int(time.time())
+        
+        try:
+            q = """
+                INSERT INTO docs (doc_id, user_id, filename, plain_text, created_at)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (doc_id) DO UPDATE 
+                SET filename = EXCLUDED.filename, plain_text = EXCLUDED.plain_text, user_id = EXCLUDED.user_id;
+            """ if db_type == "POSTGRES" else "INSERT OR REPLACE INTO docs (doc_id, user_id, filename, plain_text, created_at) VALUES (?, ?, ?, ?, ?)"
+            
+            cur.execute(
+                q.replace("%s", "?") if db_type == "SQLITE" else q, 
+                (doc_id, user_id, composite_filename, full_text, created_at)
+            )
+            conn.commit()
+            logger.info(f"✅ Saved merged document: {doc_id} ({len(full_text)} total characters)")
+        except Exception as e:
+            logger.error(f"❌ DB Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        finally:
+            conn.close()
+        
+        # Очищаем временные файлы
+        for path in saved_paths:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to delete temp file {path}: {e}")
+        
+        # Возвращаем результат
+        is_valid = len(full_text.strip()) > 1
+        preview = full_text[:500] if is_valid else "Could not read text from any file."
+        
+        return {
+            "doc_id": doc_id,
+            "valid": is_valid,
+            "preview": preview,
+            "files_processed": len(files),
+            "files_with_text": len([item for item in extracted_texts if item["text"]]),
+            "total_characters": len(full_text),
+            "composite_filename": composite_filename
+        }
     
-    is_valid = len(text.strip()) > 1
-    return {"doc_id": doc_id, "valid": is_valid, "preview": text[:200] if is_valid else "Could not read text."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Upload error: {e}")
+        # Очищаем временные файлы при ошибке
+        for path in saved_paths:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @app.post("/analyze_by_doc_id")
 def analyze_by_doc_id(req: AnalyzeDocReq):
